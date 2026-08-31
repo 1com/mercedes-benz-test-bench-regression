@@ -1,0 +1,19 @@
+[project]
+name = "mercedez-benz-test-bench-regression"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14.4"
+dependencies = [
+    "catboost>=1.2.10",
+    "jupyterlab>=4.6.3",
+    "kaggle>=2.2.4",
+    "lightgbm>=4.7.0",
+    "matplotlib>=3.11.1",
+    "numpy>=2.5.2",
+    "pandas>=3.0.5",
+    "scikit-learn>=1.9.0",
+    "scipy>=1.18.1",
+    "seaborn>=0.13.2",
+    "xgboost>=3.4.1",
+]
