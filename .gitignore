@@ -11,6 +11,7 @@ wheels/
 data/
 submissions/
 *.csv
+!reports/baseline_ladder_results.csv
 *.zip
 
 models/
@@ -20,3 +21,5 @@ models/
 
 .env
 kaggle.json
+
+.DS_Store
