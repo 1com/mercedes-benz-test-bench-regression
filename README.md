@@ -137,7 +137,7 @@ use the unscaled features since splits don't care about magnitude. Results, sort
 | Lasso | 0.550 | 0.028 | 0.536 |
 | ElasticNet | 0.549 | 0.028 | 0.541 |
 | Ridge | 0.547 | 0.022 | 0.513 |
-| LinearRegression | 0.546 | 0.022 | 0.512 |
+| LinearRegression | 0.544 | 0.022 | 0.513 |
 | RandomForestRegressor | 0.538 | 0.033 | 0.495 |
 | XGBRegressor | 0.504 | 0.043 | 0.480 |
 | SVR | 0.446 | 0.027 | 0.456 |
