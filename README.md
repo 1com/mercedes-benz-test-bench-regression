@@ -195,6 +195,25 @@ values, which we never see. Two reasons to expect our internal number is optimis
 The only genuinely comparable number is a real submission: predict on `data.X_test`, pair with
 `test_ID`, format per `sample_submission.csv`, and submit to Kaggle.
 
+## Hyperparameter tuning (`04_hyperparameter_tuning.ipynb`)
+
+`03_model_comparison.ipynb` flagged XGBoost as underperforming its potential at default settings
+(cv_r2_mean=0.504, train/val gap=0.404 — a clear overfitting signature). `RandomizedSearchCV` over
+regularization-focused parameters (`max_depth`, `min_child_weight`, `subsample`, `colsample_bytree`,
+`reg_alpha`, `reg_lambda`, `learning_rate`), scored on the same shared `kfold`, found:
+
+| | cv_r2_mean | val_r2 | train_r2 | gap |
+|---|---|---|---|---|
+| XGBoost, default | 0.504 | 0.480 | 0.884 | 0.404 |
+| **XGBoost, tuned** | **0.600** | **0.578** | 0.624 | **0.046** |
+
+Best params: `max_depth=2, min_child_weight=5, subsample=0.8, colsample_bytree=0.8,
+learning_rate=0.05, n_estimators=200, reg_lambda=5, reg_alpha=0`. Tuning closed nearly all of the
+overfitting gap and pushed both CV and validation R2 up by roughly 0.10 — enough to now beat every
+model in the `03_model_comparison.ipynb` sweep, including default-settings CatBoost (0.573) and
+LightGBM (0.569). Confirmed with a final check against `X_val` (never touched during the search),
+per this file's own guidance against overfitting hyperparameters to the CV folds.
+
 ## Starting a new notebook (hyperparameter tuning, feature engineering, submissions, ...)
 
 Every notebook — this one included when it was written — starts with the same boilerplate,
