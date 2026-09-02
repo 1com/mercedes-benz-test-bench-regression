@@ -197,22 +197,32 @@ The only genuinely comparable number is a real submission: predict on `data.X_te
 
 ## Hyperparameter tuning (`04_hyperparameter_tuning.ipynb`)
 
-`03_model_comparison.ipynb` flagged XGBoost as underperforming its potential at default settings
-(cv_r2_mean=0.504, train/val gap=0.404 — a clear overfitting signature). `RandomizedSearchCV` over
-regularization-focused parameters (`max_depth`, `min_child_weight`, `subsample`, `colsample_bytree`,
-`reg_alpha`, `reg_lambda`, `learning_rate`), scored on the same shared `kfold`, found:
+`03_model_comparison.ipynb` flagged the boosting models as underperforming their potential at
+default settings (large train/val gaps — a clear overfitting signature). Rather than assume which
+model to carry forward, all three major gradient-boosting options were tuned the same rigorous
+way: `RandomizedSearchCV` over restraint-focused parameters only (tree size, row/column sampling,
+L1/L2 penalties, learning rate), scored on the same shared `kfold`, with a final check against
+`X_val` (never touched during search) per this file's own guidance against overfitting the
+hyperparameters to the CV folds themselves.
 
-| | cv_r2_mean | val_r2 | train_r2 | gap |
-|---|---|---|---|---|
-| XGBoost, default | 0.504 | 0.480 | 0.884 | 0.404 |
-| **XGBoost, tuned** | **0.600** | **0.578** | 0.624 | **0.046** |
+| Model | Default val_r2 | Default gap | **Tuned val_r2** | Tuned gap | Tuned val_rmse |
+|---|---|---|---|---|---|
+| **XGBoost** | 0.480 | 0.404 | **0.578** | **0.046** | 8.14 |
+| LightGBM | 0.548 | 0.222 | 0.576 | 0.052 | 8.15 |
+| CatBoost | 0.533 | 0.252 | 0.568 | 0.068 | 8.23 |
 
-Best params: `max_depth=2, min_child_weight=5, subsample=0.8, colsample_bytree=0.8,
-learning_rate=0.05, n_estimators=200, reg_lambda=5, reg_alpha=0`. Tuning closed nearly all of the
-overfitting gap and pushed both CV and validation R2 up by roughly 0.10 — enough to now beat every
-model in the `03_model_comparison.ipynb` sweep, including default-settings CatBoost (0.573) and
-LightGBM (0.569). Confirmed with a final check against `X_val` (never touched during the search),
-per this file's own guidance against overfitting hyperparameters to the CV folds.
+**Once tuned, all three are essentially tied** — the 0.578 vs. 0.576 gap between XGBoost and
+LightGBM is within normal fold-to-fold noise (CV std around 0.03-0.04 elsewhere in this project),
+not a meaningful difference. CatBoost trails both slightly on every metric and took ~5x longer to
+tune. `val_r2` (performance on data never used for training or tuning) is the metric used to
+decide between models, since it's the closest available proxy to real-world generalization short
+of an actual Kaggle submission.
+
+**Recommendation: XGBoost** — not because it's decisively more accurate (it isn't), but on
+practical grounds: it's the model the team started with, it's named explicitly in the course
+brief, it has the smallest overfitting gap of the three (most trustworthy/reproducible), and the
+largest documentation/community base. LightGBM is an equally defensible alternative if the team
+prefers it.
 
 ## Starting a new notebook (hyperparameter tuning, feature engineering, submissions, ...)
 
