@@ -130,30 +130,39 @@ number below is directly comparable. Regularized linear models (Ridge/Lasso/Elas
 as are the instance/kernel-based models (KNN, SVR); `DecisionTreeRegressor` and the tree ensembles
 use the unscaled features since splits don't care about magnitude. Results, sorted by `cv_r2_mean`:
 
-| model | cv_r2_mean | cv_r2_std | val_r2 |
-|---|---|---|---|
-| CatBoostRegressor | 0.573 | 0.024 | 0.533 |
-| LGBMRegressor | 0.569 | 0.025 | 0.548 |
-| Lasso | 0.550 | 0.028 | 0.536 |
-| ElasticNet | 0.549 | 0.028 | 0.541 |
-| Ridge | 0.547 | 0.022 | 0.513 |
-| LinearRegression | 0.544 | 0.022 | 0.513 |
-| RandomForestRegressor | 0.538 | 0.033 | 0.495 |
-| XGBRegressor | 0.504 | 0.043 | 0.480 |
-| SVR | 0.446 | 0.027 | 0.456 |
-| KNeighborsRegressor | 0.412 | 0.020 | 0.395 |
-| DecisionTreeRegressor | 0.169 | 0.096 | 0.148 |
+| model | cv_r2_mean | cv_r2_std | val_r2 | train_r2 | gap |
+|---|---|---|---|---|---|
+| CatBoostRegressor | 0.573 | 0.024 | 0.533 | 0.785 | 0.252 |
+| LGBMRegressor | 0.569 | 0.025 | 0.548 | 0.770 | 0.222 |
+| Lasso | 0.550 | 0.028 | 0.536 | 0.553 | 0.018 |
+| ElasticNet | 0.549 | 0.028 | 0.541 | 0.561 | 0.020 |
+| Ridge | 0.547 | 0.022 | 0.513 | 0.632 | 0.119 |
+| LinearRegression | 0.544 | 0.022 | 0.513 | 0.632 | 0.119 |
+| RandomForestRegressor | 0.538 | 0.033 | 0.495 | 0.918 | 0.423 |
+| XGBRegressor | 0.504 | 0.043 | 0.480 | 0.884 | 0.404 |
+| SVR | 0.446 | 0.027 | 0.456 | 0.488 | 0.032 |
+| KNeighborsRegressor | 0.412 | 0.020 | 0.395 | 0.610 | 0.215 |
+| DecisionTreeRegressor | 0.169 | 0.096 | 0.148 | 0.975 | 0.827 |
 
-**Takeaways:** CatBoost/LightGBM win, but only modestly over the entire linear family — every
-linear model here beats *default*-hyperparameter XGBoost and RandomForest. KNN/SVR trail clearly,
-likely because "distance between rows" gets unreliable across 310 mostly-binary dimensions (the
-curse of dimensionality). `DecisionTreeRegressor` trails everything by a wide margin (CV R²=0.17)
-with by far the largest `cv_r2_std` (0.096 vs. ~0.02–0.04 for everything else) — a single
-unconstrained tree splits until it nearly memorizes the training data, and that instability shows
-up directly as unreliable fold-to-fold performance; `RandomForest`/boosting fix exactly this by
-averaging many such trees together. Since everything here uses default hyperparameters, the
-biggest lever left is tuning the boosting models (see [Next steps](#next-steps)), not trying more
-model types.
+`gap` is `train_r2 - val_r2` (see [Metrics used throughout](#metrics-used-throughout)) — the same
+overfitting diagnostic `02_baseline_model.ipynb` runs for its baseline, applied here to every model.
+
+**Takeaways:** CatBoost/LightGBM win on CV R², but only modestly over the entire linear family —
+every linear model here beats *default*-hyperparameter XGBoost and RandomForest. KNN/SVR trail
+clearly, likely because "distance between rows" gets unreliable across 310 mostly-binary
+dimensions (the curse of dimensionality). `DecisionTreeRegressor` trails everything by a wide
+margin (CV R²=0.17) with by far the largest `gap` (0.83) and `cv_r2_std` (0.096) — a single
+unconstrained tree splits until it nearly memorizes the training data (train R²=0.975), and that
+shows up both as an inflated train score and as unreliable fold-to-fold performance;
+`RandomForest`/boosting fix exactly this by averaging many such trees together, though not
+entirely — `RandomForest` (gap=0.42) and `XGBoost` (gap=0.40) still overfit substantially, and even
+the two CV-winners aren't overfitting-free (`CatBoost`/`LightGBM` gaps of 0.25/0.22). The
+regularized linear models have the smallest gaps of the whole sweep (`Lasso`=0.018,
+`ElasticNet`=0.020, `SVR`=0.032) — the best-generalizing models here aren't the best-scoring ones,
+which is exactly the kind of tradeoff hyperparameter tuning (reining in the tree models'
+flexibility) is meant to address. Since everything here uses default hyperparameters, the biggest
+lever left is tuning the boosting models (see [Next steps](#next-steps)), not trying more model
+types.
 
 ## Important caveat: internal CV score vs. the real Kaggle leaderboard
 
