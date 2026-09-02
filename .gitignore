@@ -20,3 +20,6 @@ models/
 
 .env
 kaggle.json
+
+# CatBoost training logs (generated at fit time)
+catboost_info/
