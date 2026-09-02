@@ -112,6 +112,17 @@ model's predictions are off by about 8.7 seconds on average" is a more intuitive
   sorted by `cv_r2_mean` for this reason. A big gap between `val_r2` and `cv_r2_mean` for a given
   model is a hint that its performance is sensitive to exactly which rows it's tested on.
 
+**`train_r2` and `gap`** — the overfitting/underfitting check, run for every model in both
+notebooks (`02_baseline_model.ipynb` for its one baseline; `03_model_comparison.ipynb` for all 11):
+- `train_r2` — R² measured on the same rows the model trained on. Not very informative alone: a
+  flexible enough model can fit its own training data extremely well even when that pattern
+  doesn't generalize at all (`DecisionTreeRegressor`'s train_r2=0.975 is a stark example below).
+- `gap` — `train_r2 - val_r2`, the actual diagnostic. **Overfitting**: train_r2 high, gap large —
+  the model memorized training-specific patterns rather than learning something that generalizes.
+  **Underfitting**: gap small, but both train_r2 *and* val_r2 are low — the model isn't even
+  capturing the pattern in the data it trained on. **Good fit**: gap small, both scores reasonably
+  high.
+
 ## Notebooks
 
 **`01_eda.ipynb`** — establishes everything in [The data](#the-data) above, plus a dummy CV
