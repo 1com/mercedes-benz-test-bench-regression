@@ -38,7 +38,14 @@ notebooks/
   03_model_comparison.ipynb       sweep of regression models on the same shared dataset
   04_feature_engineering.ipynb    PCA on the binary block — tested before tuning, rejected with evidence
   05_hyperparameter_tuning.ipynb  XGBoost/LightGBM/CatBoost tuned on the unchanged (no-PCA) feature set
+  06_error_analysis.ipynb         Final model (tuned XGBoost) diagnosed: residuals, worst errors,
+                                   noise ceiling, per-X0 weak spots, business insight
 ```
+
+**Final model: tuned XGBoost** (`max_depth=2, min_child_weight=5, subsample=0.8,
+colsample_bytree=0.8, learning_rate=0.05, n_estimators=200, reg_lambda=5, reg_alpha=0`),
+val_r2=0.578. Locked in after model comparison, feature engineering, and tuning were all complete
+— see `05_hyperparameter_tuning.ipynb` and `06_error_analysis.ipynb`.
 
 ## The data
 
@@ -312,12 +319,14 @@ submission.to_csv('../submissions/my_submission.csv', index=False)  # matches sa
   every tree-based model).
 - ~~Hyperparameter tuning~~ — done, `05_hyperparameter_tuning.ipynb`. XGBoost recommended
   (val_r2=0.578), statistically tied with LightGBM (0.576); CatBoost close behind (0.568).
-- **Error analysis** — residuals vs. predicted, worst 20 errors, near-identical configurations
-  with different `y` (proof of irreducible noise), performance broken out by `X0` level especially
-  rare ones. Required for M5; also the step that determines whether any further feature work would
-  even be worth revisiting.
-- **Translate one error-analysis finding into a product/data insight** — e.g. "configuration alone
-  explains ~58% of bench time; the rest likely needs data this dataset doesn't have (line ID,
-  shift, operator, date)."
+- ~~Error analysis~~ — done, `06_error_analysis.ipynb`. Model underestimates rare, unusually slow
+  cars (not a broad bias); `X0='s'` is a specific weak spot (2x the average error); **12.2% of
+  training rows are feature-identical to another row with a different `y`** — direct proof of an
+  irreducible noise ceiling, including one pair differing by 58.56 seconds despite matching on
+  every feature.
+- ~~Translate one finding into a product/data insight~~ — done, see `06_error_analysis.ipynb`'s
+  final section: configuration explains the model's predictions, but at least 12% of real-world
+  variation needs data this dataset doesn't have (line ID, shift, operator, date).
 - **Submit a real prediction** to get an honest, externally-validated score (see caveat above and
   the snippet just above) — optional, but the only genuinely external check available.
+- Slides / presentation (M4/M6).
