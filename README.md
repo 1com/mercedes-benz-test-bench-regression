@@ -205,6 +205,20 @@ values, which we never see. Two reasons to expect our internal number is optimis
 The only genuinely comparable number is a real submission: predict on `data.X_test`, pair with
 `test_ID`, format per `sample_submission.csv`, and submit to Kaggle.
 
+**Done — real result:** the final tuned XGBoost model (refit on all labeled data: train + val
+combined) was submitted as a late/practice submission (competition closed, no prize eligibility).
+
+| | R² |
+|---|---|
+| Internal validation estimate | 0.578 |
+| **Kaggle Public Score** (external, real) | **0.553** |
+| **Kaggle Private Score** (external, real — the score that would have counted) | **0.551** |
+
+The ~0.03 drop from our internal estimate to the real score is small and expected — evidence the
+CV process was honest, not overfit to itself. **0.551–0.553 lands squarely inside the 0.55–0.58
+range documented above for genuine public leaderboard solutions** — a credible, externally-verified
+result, not just an internal estimate.
+
 ## Feature engineering (`04_feature_engineering.ipynb`)
 
 Standard ML process puts feature engineering *before* hyperparameter tuning — tuning fits a
@@ -327,6 +341,6 @@ submission.to_csv('../submissions/my_submission.csv', index=False)  # matches sa
 - ~~Translate one finding into a product/data insight~~ — done, see `06_error_analysis.ipynb`'s
   final section: configuration explains the model's predictions, but at least 12% of real-world
   variation needs data this dataset doesn't have (line ID, shift, operator, date).
-- **Submit a real prediction** to get an honest, externally-validated score (see caveat above and
-  the snippet just above) — optional, but the only genuinely external check available.
-- Slides / presentation (M4/M6).
+- ~~Submit a real prediction~~ — done, see the caveat section above. **Kaggle Public 0.553 /
+  Private 0.551** — matches the 0.55-0.58 range of genuine public solutions.
+- Slides / presentation (M4/M6) — draft in progress.
