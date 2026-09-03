@@ -40,6 +40,7 @@ notebooks/
   05_hyperparameter_tuning.ipynb  XGBoost/LightGBM/CatBoost tuned on the unchanged (no-PCA) feature set
   06_error_analysis.ipynb         Final model (tuned XGBoost) diagnosed: residuals, worst errors,
                                    noise ceiling, per-X0 weak spots, business insight
+reports/figures/                  Charts referenced from 06_error_analysis.ipynb
 ```
 
 **Final model: tuned XGBoost** (`max_depth=2, min_child_weight=5, subsample=0.8,
@@ -307,16 +308,15 @@ kfold = get_cv_splitter()
 ```
 
 **Always import from `src` — never copy-paste-and-adapt the preprocessing steps into a new
-notebook, even if it looks equivalent.** We found out why the hard way: a teammate's branch
-(`eve-feature-engineering`) independently re-implemented this same pipeline by hand — same
-outlier, same column-cleanup rule, same encoder, `random_state=42` throughout. It dropped the
-outlier *after* the train/val split instead of before. That single ordering difference was enough
-to shift which rows `train_test_split` assigned to `X_val` so much that only 42% of the two
-"identical `random_state=42`" validation sets actually overlapped — producing a Linear Regression
-score of 0.5391 there vs. 0.5131 here, entirely from data-handling drift, not a real modeling
-difference. Two pipelines that both claim `random_state=42` reproducibility are only actually
-interchangeable if they call the exact same code — that's the whole reason `get_processed_data()`
-exists.
+notebook, even if it looks equivalent.** The team found out why the hard way: an early
+experimental branch independently re-implemented this same pipeline by hand — same outlier, same
+column-cleanup rule, same encoder, `random_state=42` throughout. It dropped the outlier *after*
+the train/val split instead of before. That single ordering difference was enough to shift which
+rows `train_test_split` assigned to `X_val` so much that only 42% of the two "identical
+`random_state=42`" validation sets actually overlapped — producing a Linear Regression score of
+0.5391 there vs. 0.5131 here, entirely from data-handling drift, not a real modeling difference.
+Two pipelines that both claim `random_state=42` reproducibility are only actually interchangeable
+if they call the exact same code — that's the whole reason `get_processed_data()` exists.
 
 **Generating a Kaggle submission** from any fitted model, once you're ready to get a real,
 externally-validated score (see the caveat above):
