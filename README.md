@@ -21,7 +21,7 @@ what that means and how to read it.
 
    Download them from the [competition page](https://www.kaggle.com/c/mercedes-benz-greener-manufacturing/data)
    or via the Kaggle CLI (`kaggle competitions download -c mercedes-benz-greener-manufacturing`).
-3. Launch notebooks: `uv run jupyter lab`, and run them in order (01 → 02 → 03). Each is
+3. Launch notebooks: `uv run jupyter lab`, and run them in order (01 → 02 → 03 → 04 → 05). Each is
    self-contained given the data files above.
 
 ## Project structure
@@ -31,10 +31,13 @@ src/
   config.py         constants shared by everything below (RANDOM_STATE, OUTLIER_ID, etc.)
   data.py           raw CSV loading + outlier removal
   preprocessing.py  cleaning, encoding, and get_processed_data() — the shared pipeline
+  features.py       optional PCA step on the binary block (tested, not adopted — see below)
 notebooks/
-  01_eda.ipynb              exploratory analysis
-  02_baseline_model.ipynb   first, deliberately simple model (Linear Regression)
-  03_model_comparison.ipynb sweep of regression models on the same shared dataset
+  01_eda.ipynb                    exploratory analysis
+  02_baseline_model.ipynb         first, deliberately simple model (Linear Regression)
+  03_model_comparison.ipynb       sweep of regression models on the same shared dataset
+  04_feature_engineering.ipynb    PCA on the binary block — tested before tuning, rejected with evidence
+  05_hyperparameter_tuning.ipynb  XGBoost/LightGBM/CatBoost tuned on the unchanged (no-PCA) feature set
 ```
 
 ## The data
@@ -195,7 +198,31 @@ values, which we never see. Two reasons to expect our internal number is optimis
 The only genuinely comparable number is a real submission: predict on `data.X_test`, pair with
 `test_ID`, format per `sample_submission.csv`, and submit to Kaggle.
 
-## Hyperparameter tuning (`04_hyperparameter_tuning.ipynb`)
+## Feature engineering (`04_feature_engineering.ipynb`)
+
+Standard ML process puts feature engineering *before* hyperparameter tuning — tuning fits a
+model's settings to a specific feature shape, so testing it here, before tuning, avoids tuning a
+model on a feature set that later turns out not to be final. `01_eda.ipynb` flagged PCA on the
+310-column binary block as worth testing; `src/features.py::reduce_binary_features()` compresses
+it to 81 components (95% variance retained), leaving the categorical columns untouched. Checked
+with default-settings models (cheap, before committing to any tuning):
+
+| Model | val_r2, no PCA | val_r2, with PCA | Delta |
+|---|---|---|---|
+| Linear Regression | 0.5124 | 0.5289 | +0.0165 |
+| Ridge | 0.5131 | 0.5289 | +0.0159 |
+| Random Forest | 0.4972 | 0.4713 | -0.0259 |
+| XGBoost | 0.4801 | 0.4036 | **-0.0765** |
+| LightGBM | 0.5484 | 0.4910 | -0.0573 |
+| CatBoost | 0.5332 | 0.5049 | -0.0283 |
+
+**Rejected for this project.** PCA helps the linear models slightly but hurts every tree-based
+model, worst for XGBoost. Mechanically: a tree splits cleanly on one binary flag at a time; PCA
+blends many flags into combined components, destroying exactly that kind of simple, high-signal
+split. Since the candidate models going forward are all tree-based, the feature set carried into
+`05_hyperparameter_tuning.ipynb` is unchanged from `03_model_comparison.ipynb`.
+
+## Hyperparameter tuning (`05_hyperparameter_tuning.ipynb`)
 
 `03_model_comparison.ipynb` flagged the boosting models as underperforming their potential at
 default settings (large train/val gaps — a clear overfitting signature). Rather than assume which
@@ -263,19 +290,16 @@ submission.to_csv('../submissions/my_submission.csv', index=False)  # matches sa
 
 ## Next steps
 
+- ~~Feature engineering~~ — done, `04_feature_engineering.ipynb`. PCA tested, rejected (hurts
+  every tree-based model).
+- ~~Hyperparameter tuning~~ — done, `05_hyperparameter_tuning.ipynb`. XGBoost recommended
+  (val_r2=0.578), statistically tied with LightGBM (0.576); CatBoost close behind (0.568).
+- **Error analysis** — residuals vs. predicted, worst 20 errors, near-identical configurations
+  with different `y` (proof of irreducible noise), performance broken out by `X0` level especially
+  rare ones. Required for M5; also the step that determines whether any further feature work would
+  even be worth revisiting.
+- **Translate one error-analysis finding into a product/data insight** — e.g. "configuration alone
+  explains ~58% of bench time; the rest likely needs data this dataset doesn't have (line ID,
+  shift, operator, date)."
 - **Submit a real prediction** to get an honest, externally-validated score (see caveat above and
-  the snippet just above).
-- **Hyperparameter tuning** — a natural next notebook (`04_hyperparameter_tuning.ipynb`): reuse
-  `get_processed_data()` and `get_cv_splitter()` unchanged so tuned results stay comparable to the
-  table above; pick one model to start with (LightGBM/CatBoost to push the leaders further, or
-  XGBoost since it underperformed its potential with defaults); use `GridSearchCV` or
-  `RandomizedSearchCV` with `cv=kfold` (the same shared splitter); compare `.best_score_` against
-  that model's `cv_r2_mean` row above; do one final, untouched check against `X_val`/`y_val` after
-  picking final hyperparameters, since repeatedly searching against the same 5 CV folds risks
-  quietly overfitting the hyperparameters to those folds specifically.
-- **Feature engineering** on the binary block (dimensionality reduction — PCA/ICA/SVD/GRP/SRP, per
-  the EDA notes above). To keep every notebook working from the same final dataset, this belongs
-  *inside* the shared pipeline, not notebook-local code: either extend
-  `src/preprocessing.py::get_processed_data()` or add a new `src/features.py` step it calls. Follow
-  the same calculate-on-train/apply-everywhere discipline as everything else — fit any reducer
-  (e.g. `PCA`) on `X_train` only, then `.transform()` `X_train`/`X_val`/`X_test`.
+  the snippet just above) — optional, but the only genuinely external check available.
