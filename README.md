@@ -216,10 +216,28 @@ with default-settings models (cheap, before committing to any tuning):
 | LightGBM | 0.5484 | 0.4910 | -0.0573 |
 | CatBoost | 0.5332 | 0.5049 | -0.0283 |
 
-**Rejected for this project.** PCA helps the linear models slightly but hurts every tree-based
-model, worst for XGBoost. Mechanically: a tree splits cleanly on one binary flag at a time; PCA
-blends many flags into combined components, destroying exactly that kind of simple, high-signal
-split. Since the candidate models going forward are all tree-based, the feature set carried into
+PCA helps the linear models but hurts every tree-based model, worst for XGBoost. Mechanically: a
+tree splits cleanly on one binary flag at a time; PCA blends many flags into combined components,
+destroying exactly that kind of simple, high-signal split. Linear models suffer from
+multicollinearity (redundant, overlapping columns making their weights unstable) — PCA fixes
+exactly that, which is why they improve.
+
+**Checking this fairly, not just assuming it favors the tree models:** Lasso/ElasticNet's default
+regularization strength is a poor match for the rescaled PCA features, so their default-settings
+scores above aren't a fair test. Tuning `alpha` (and `l1_ratio`) properly:
+
+| Model | Tuned val_r2, with PCA |
+|---|---|
+| Ridge | 0.530 |
+| **Lasso** | **0.531** (best linear result) |
+| ElasticNet | 0.531 |
+| *(reference)* Tuned XGBoost, no PCA | **0.578** |
+
+Even with PCA and proper tuning, linear models land ~0.047 below tuned XGBoost — a real gap, larger
+than the near-tie observed between the boosting models, not just a close call resolved by
+preference. **PCA is rejected for this project's final model** because that final model is
+tree-based, and tuned linear-plus-PCA still falls meaningfully short of it — not because linear
+models don't benefit from PCA (they do). The feature set carried into
 `05_hyperparameter_tuning.ipynb` is unchanged from `03_model_comparison.ipynb`.
 
 ## Hyperparameter tuning (`05_hyperparameter_tuning.ipynb`)
