@@ -21,7 +21,7 @@ what that means and how to read it.
 
    Download them from the [competition page](https://www.kaggle.com/c/mercedes-benz-greener-manufacturing/data)
    or via the Kaggle CLI (`kaggle competitions download -c mercedes-benz-greener-manufacturing`).
-3. Launch notebooks: `uv run jupyter lab`, and run them in order (01 → 02 → 03). Each is
+3. Launch notebooks: `uv run jupyter lab`, and run them in order (01 → 02 → 03 → 04 → 05). Each is
    self-contained given the data files above.
 
 ## Project structure
@@ -31,11 +31,22 @@ src/
   config.py         constants shared by everything below (RANDOM_STATE, OUTLIER_ID, etc.)
   data.py           raw CSV loading + outlier removal
   preprocessing.py  cleaning, encoding, and get_processed_data() — the shared pipeline
+  features.py       optional PCA step on the binary block (tested, not adopted — see below)
 notebooks/
-  01_eda.ipynb              exploratory analysis
-  02_baseline_model.ipynb   first, deliberately simple model (Linear Regression)
-  03_model_comparison.ipynb sweep of regression models on the same shared dataset
+  01_eda.ipynb                    exploratory analysis
+  02_baseline_model.ipynb         first, deliberately simple model (Linear Regression)
+  03_model_comparison.ipynb       sweep of regression models on the same shared dataset
+  04_feature_engineering.ipynb    PCA on the binary block — tested before tuning, rejected with evidence
+  05_hyperparameter_tuning.ipynb  XGBoost/LightGBM/CatBoost tuned on the unchanged (no-PCA) feature set
+  06_error_analysis.ipynb         Final model (tuned XGBoost) diagnosed: residuals, worst errors,
+                                   noise ceiling, per-X0 weak spots, business insight
+reports/figures/                  Charts referenced from 06_error_analysis.ipynb
 ```
+
+**Final model: tuned XGBoost** (`max_depth=2, min_child_weight=5, subsample=0.8,
+colsample_bytree=0.8, learning_rate=0.05, n_estimators=200, reg_lambda=5, reg_alpha=0`),
+val_r2=0.578. Locked in after model comparison, feature engineering, and tuning were all complete
+— see `05_hyperparameter_tuning.ipynb` and `06_error_analysis.ipynb`.
 
 ## The data
 
@@ -195,6 +206,91 @@ values, which we never see. Two reasons to expect our internal number is optimis
 The only genuinely comparable number is a real submission: predict on `data.X_test`, pair with
 `test_ID`, format per `sample_submission.csv`, and submit to Kaggle.
 
+**Done — real result:** the final tuned XGBoost model (refit on all labeled data: train + val
+combined) was submitted as a late/practice submission (competition closed, no prize eligibility).
+
+| | R² |
+|---|---|
+| Internal validation estimate | 0.578 |
+| **Kaggle Public Score** (external, real) | **0.553** |
+| **Kaggle Private Score** (external, real — the score that would have counted) | **0.551** |
+
+The ~0.03 drop from our internal estimate to the real score is small and expected — evidence the
+CV process was honest, not overfit to itself. **0.551–0.553 lands squarely inside the 0.55–0.58
+range documented above for genuine public leaderboard solutions** — a credible, externally-verified
+result, not just an internal estimate.
+
+## Feature engineering (`04_feature_engineering.ipynb`)
+
+Standard ML process puts feature engineering *before* hyperparameter tuning — tuning fits a
+model's settings to a specific feature shape, so testing it here, before tuning, avoids tuning a
+model on a feature set that later turns out not to be final. `01_eda.ipynb` flagged PCA on the
+310-column binary block as worth testing; `src/features.py::reduce_binary_features()` compresses
+it to 81 components (95% variance retained), leaving the categorical columns untouched. Checked
+with default-settings models (cheap, before committing to any tuning):
+
+| Model | val_r2, no PCA | val_r2, with PCA | Delta |
+|---|---|---|---|
+| Linear Regression | 0.5124 | 0.5289 | +0.0165 |
+| Ridge | 0.5131 | 0.5289 | +0.0159 |
+| Random Forest | 0.4972 | 0.4713 | -0.0259 |
+| XGBoost | 0.4801 | 0.4036 | **-0.0765** |
+| LightGBM | 0.5484 | 0.4910 | -0.0573 |
+| CatBoost | 0.5332 | 0.5049 | -0.0283 |
+
+PCA helps the linear models but hurts every tree-based model, worst for XGBoost. Mechanically: a
+tree splits cleanly on one binary flag at a time; PCA blends many flags into combined components,
+destroying exactly that kind of simple, high-signal split. Linear models suffer from
+multicollinearity (redundant, overlapping columns making their weights unstable) — PCA fixes
+exactly that, which is why they improve.
+
+**Checking this fairly, not just assuming it favors the tree models:** Lasso/ElasticNet's default
+regularization strength is a poor match for the rescaled PCA features, so their default-settings
+scores above aren't a fair test. Tuning `alpha` (and `l1_ratio`) properly:
+
+| Model | Tuned val_r2, with PCA |
+|---|---|
+| Ridge | 0.530 |
+| **Lasso** | **0.531** (best linear result) |
+| ElasticNet | 0.531 |
+| *(reference)* Tuned XGBoost, no PCA | **0.578** |
+
+Even with PCA and proper tuning, linear models land ~0.047 below tuned XGBoost — a real gap, larger
+than the near-tie observed between the boosting models, not just a close call resolved by
+preference. **PCA is rejected for this project's final model** because that final model is
+tree-based, and tuned linear-plus-PCA still falls meaningfully short of it — not because linear
+models don't benefit from PCA (they do). The feature set carried into
+`05_hyperparameter_tuning.ipynb` is unchanged from `03_model_comparison.ipynb`.
+
+## Hyperparameter tuning (`05_hyperparameter_tuning.ipynb`)
+
+`03_model_comparison.ipynb` flagged the boosting models as underperforming their potential at
+default settings (large train/val gaps — a clear overfitting signature). Rather than assume which
+model to carry forward, all three major gradient-boosting options were tuned the same rigorous
+way: `RandomizedSearchCV` over restraint-focused parameters only (tree size, row/column sampling,
+L1/L2 penalties, learning rate), scored on the same shared `kfold`, with a final check against
+`X_val` (never touched during search) per this file's own guidance against overfitting the
+hyperparameters to the CV folds themselves.
+
+| Model | Default val_r2 | Default gap | **Tuned val_r2** | Tuned gap | Tuned val_rmse |
+|---|---|---|---|---|---|
+| **XGBoost** | 0.480 | 0.404 | **0.578** | **0.046** | 8.14 |
+| LightGBM | 0.548 | 0.222 | 0.576 | 0.052 | 8.15 |
+| CatBoost | 0.533 | 0.252 | 0.568 | 0.068 | 8.23 |
+
+**Once tuned, all three are essentially tied** — the 0.578 vs. 0.576 gap between XGBoost and
+LightGBM is within normal fold-to-fold noise (CV std around 0.03-0.04 elsewhere in this project),
+not a meaningful difference. CatBoost trails both slightly on every metric and took ~5x longer to
+tune. `val_r2` (performance on data never used for training or tuning) is the metric used to
+decide between models, since it's the closest available proxy to real-world generalization short
+of an actual Kaggle submission.
+
+**Recommendation: XGBoost** — not because it's decisively more accurate (it isn't), but on
+practical grounds: it's the model the team started with, it's named explicitly in the course
+brief, it has the smallest overfitting gap of the three (most trustworthy/reproducible), and the
+largest documentation/community base. LightGBM is an equally defensible alternative if the team
+prefers it.
+
 ## Starting a new notebook (hyperparameter tuning, feature engineering, submissions, ...)
 
 Every notebook — this one included when it was written — starts with the same boilerplate,
@@ -212,16 +308,15 @@ kfold = get_cv_splitter()
 ```
 
 **Always import from `src` — never copy-paste-and-adapt the preprocessing steps into a new
-notebook, even if it looks equivalent.** We found out why the hard way: a teammate's branch
-(`eve-feature-engineering`) independently re-implemented this same pipeline by hand — same
-outlier, same column-cleanup rule, same encoder, `random_state=42` throughout. It dropped the
-outlier *after* the train/val split instead of before. That single ordering difference was enough
-to shift which rows `train_test_split` assigned to `X_val` so much that only 42% of the two
-"identical `random_state=42`" validation sets actually overlapped — producing a Linear Regression
-score of 0.5391 there vs. 0.5131 here, entirely from data-handling drift, not a real modeling
-difference. Two pipelines that both claim `random_state=42` reproducibility are only actually
-interchangeable if they call the exact same code — that's the whole reason `get_processed_data()`
-exists.
+notebook, even if it looks equivalent.** The team found out why the hard way: an early
+experimental branch independently re-implemented this same pipeline by hand — same outlier, same
+column-cleanup rule, same encoder, `random_state=42` throughout. It dropped the outlier *after*
+the train/val split instead of before. That single ordering difference was enough to shift which
+rows `train_test_split` assigned to `X_val` so much that only 42% of the two "identical
+`random_state=42`" validation sets actually overlapped — producing a Linear Regression score of
+0.5391 there vs. 0.5131 here, entirely from data-handling drift, not a real modeling difference.
+Two pipelines that both claim `random_state=42` reproducibility are only actually interchangeable
+if they call the exact same code — that's the whole reason `get_processed_data()` exists.
 
 **Generating a Kaggle submission** from any fitted model, once you're ready to get a real,
 externally-validated score (see the caveat above):
@@ -234,19 +329,18 @@ submission.to_csv('../submissions/my_submission.csv', index=False)  # matches sa
 
 ## Next steps
 
-- **Submit a real prediction** to get an honest, externally-validated score (see caveat above and
-  the snippet just above).
-- **Hyperparameter tuning** — a natural next notebook (`04_hyperparameter_tuning.ipynb`): reuse
-  `get_processed_data()` and `get_cv_splitter()` unchanged so tuned results stay comparable to the
-  table above; pick one model to start with (LightGBM/CatBoost to push the leaders further, or
-  XGBoost since it underperformed its potential with defaults); use `GridSearchCV` or
-  `RandomizedSearchCV` with `cv=kfold` (the same shared splitter); compare `.best_score_` against
-  that model's `cv_r2_mean` row above; do one final, untouched check against `X_val`/`y_val` after
-  picking final hyperparameters, since repeatedly searching against the same 5 CV folds risks
-  quietly overfitting the hyperparameters to those folds specifically.
-- **Feature engineering** on the binary block (dimensionality reduction — PCA/ICA/SVD/GRP/SRP, per
-  the EDA notes above). To keep every notebook working from the same final dataset, this belongs
-  *inside* the shared pipeline, not notebook-local code: either extend
-  `src/preprocessing.py::get_processed_data()` or add a new `src/features.py` step it calls. Follow
-  the same calculate-on-train/apply-everywhere discipline as everything else — fit any reducer
-  (e.g. `PCA`) on `X_train` only, then `.transform()` `X_train`/`X_val`/`X_test`.
+- ~~Feature engineering~~ — done, `04_feature_engineering.ipynb`. PCA tested, rejected (hurts
+  every tree-based model).
+- ~~Hyperparameter tuning~~ — done, `05_hyperparameter_tuning.ipynb`. XGBoost recommended
+  (val_r2=0.578), statistically tied with LightGBM (0.576); CatBoost close behind (0.568).
+- ~~Error analysis~~ — done, `06_error_analysis.ipynb`. Model underestimates rare, unusually slow
+  cars (not a broad bias); `X0='s'` is a specific weak spot (2x the average error); **12.2% of
+  training rows are feature-identical to another row with a different `y`** — direct proof of an
+  irreducible noise ceiling, including one pair differing by 58.56 seconds despite matching on
+  every feature.
+- ~~Translate one finding into a product/data insight~~ — done, see `06_error_analysis.ipynb`'s
+  final section: configuration explains the model's predictions, but at least 12% of real-world
+  variation needs data this dataset doesn't have (line ID, shift, operator, date).
+- ~~Submit a real prediction~~ — done, see the caveat section above. **Kaggle Public 0.553 /
+  Private 0.551** — matches the 0.55-0.58 range of genuine public solutions.
+- Slides / presentation (M4/M6) — draft in progress.
